@@ -7,7 +7,6 @@
     
     <link rel="icon" href="icone.png" type="image/png">
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tmi.js/1.8.5/tmi.min.js"></script>
     <style>
         :root {
             --bg-color: #0b0c10; --border-gold: #d4af37; --box-bg: #151a22;
@@ -128,7 +127,7 @@
         </div>
     </div>
 
-    <!-- Modal Twitch (Idêntico ao do Sorteador) -->
+    <!-- Modal de Configuração Idêntico ao Sorteador -->
     <div class="modal" id="configModal">
         <div class="modal-content">
             <span class="fechar-modal" onclick="fecharModal('configModal')">X</span>
@@ -137,7 +136,7 @@
             <input type="text" id="configChannel" placeholder="Ex: SeuCanal">
             <label style="margin-top:10px;">Token OAuth (Opcional)</label>
             <input type="password" id="configToken" placeholder="Cole o 'oauth:abcd...' aqui">
-            <button class="btn-salvar" style="background: #00E5FF; color:#121216;" onclick="salvarConfiguracoes()">🔗 CONECTAR AO CHAT</button>
+            <button class="btn-salvar" style="background: #00E5FF; color:#121216;" onclick="conectarTwitch()">🔗 CONECTAR AO CHAT</button>
         </div>
     </div>
 
@@ -164,7 +163,7 @@
     <div class="bracket" id="bracket-container"></div>
 
     <script>
-        let client = null;
+        let ws = null;
         
         const classesOptions = `
             <option value="">Cls</option>
@@ -299,7 +298,7 @@
         }
 
         function anunciarSorteioChat(jogadores) {
-            if (!client || client.readyState() !== "OPEN") return;
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
             let msg = `🎲 ROLETA RODOU! CHAVEAMENTO DEFINIDO! 🎲 `;
             let lutasValidas = 0;
@@ -311,7 +310,7 @@
                     msg += `| ⚔️ LUTA ${lutasValidas}: [${j1}] vs [${j2}] `;
                 }
             }
-            client.say(localStorage.getItem('x1_channel'), msg).catch(err => console.error(err));
+            sendChatMsg(msg);
         }
 
         function atualizarClasse(inputName) {
@@ -448,15 +447,7 @@
             }
         };
 
-        // LÓGICA EXATA DO SEU SORTEADOR PARA CONEXÃO COM A TWITCH
-        function salvarConfiguracoes() {
-            const channel = document.getElementById('configChannel').value.trim();
-            const token = document.getElementById('configToken').value.trim();
-            localStorage.setItem('x1_channel', channel);
-            localStorage.setItem('x1_token', token);
-            conectarTwitch();
-        }
-
+        // LÓGICA WEBSOCKET IDÊNTICA AO SEU SORTEADOR
         function conectarTwitch() {
             let channelRaw = document.getElementById('configChannel').value.trim();
             let oauthTokenRaw = document.getElementById('configToken').value.trim();
@@ -464,9 +455,10 @@
             if(!channelRaw) return alert("Digite o canal!");
             let channel = channelRaw.toLowerCase();
 
-            if(client) {
-                client.disconnect();
-            }
+            localStorage.setItem('x1_channel', channel);
+            localStorage.setItem('x1_token', oauthTokenRaw);
+
+            if(ws) ws.close();
 
             const badge = document.getElementById('badge-conexao');
             const txt = document.getElementById('txt-conexao');
@@ -474,28 +466,57 @@
             txt.innerText = "Conectando...";
             badge.classList.remove('status-disconnected');
 
-            client = new tmi.Client({
-                options: { debug: false },
-                identity: {
-                    username: oauthTokenRaw ? channel : undefined,
-                    password: oauthTokenRaw ? (oauthTokenRaw.startsWith('oauth:') ? oauthTokenRaw : 'oauth:' + oauthTokenRaw) : undefined
-                },
-                channels: [ channel ]
-            });
+            ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
 
-            client.connect().then(() => {
+            ws.onopen = () => {
+                let cleanToken = oauthTokenRaw.replace('oauth:','').trim();
+                ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+                if(cleanToken !== ''){
+                    ws.send(`PASS oauth:${cleanToken}`);
+                    ws.send(`NICK ${channel}`);
+                }else{
+                    ws.send(`PASS SCHMOOPIIE`);
+                    ws.send(`NICK justinfan12345`);
+                }
+                ws.send(`JOIN #${channel}`);
+                
                 badge.classList.remove('status-disconnected');
-                txt.innerText = "Conectado c/ Envio Automático!";
+                txt.innerText = cleanToken ? "Conectado c/ Envio Automático!" : "Conectado (Leitura)";
                 setTimeout(() => fecharModal('configModal'), 1000);
-            }).catch(err => {
+            };
+
+            ws.onmessage = (event) => {
+                const lines = event.data.split('\r\n');
+                for(let line of lines){
+                    if(!line) continue;
+                    if(line.startsWith('PING')){
+                        ws.send('PONG :tmi.twitch.tv');
+                        continue;
+                    }
+                    if(line.includes('Login authentication failed')){
+                        badge.classList.add('status-disconnected');
+                        txt.innerText = "Erro: Token Inválido";
+                        ws.close();
+                        continue;
+                    }
+                }
+            };
+
+            ws.onclose = () => {
                 badge.classList.add('status-disconnected');
-                txt.innerText = "Erro na Conexão";
-                console.error("Erro Twitch:", err);
-            });
+                txt.innerText = "Desconectado";
+            };
+        }
+
+        function sendChatMsg(text) {
+            if(ws && ws.readyState === WebSocket.OPEN && document.getElementById('configToken').value.trim() !== ''){
+                let channelRaw = document.getElementById('configChannel').value.trim().toLowerCase();
+                ws.send(`PRIVMSG #${channelRaw} :${text}`);
+            }
         }
 
         async function anunciarX1(btn) {
-            if (!client || client.readyState() !== "OPEN") return alert("Twitch desconectada!");
+            if (!ws || ws.readyState !== WebSocket.OPEN) return alert("Twitch desconectada!");
 
             const matchDiv = btn.closest('.match');
             const p1Nick = matchDiv.querySelector('.p1-name').value || "Lutador 1"; const p1Twitch = matchDiv.querySelector('.p1-twitch').value;
@@ -511,11 +532,14 @@
             const t1 = p1Twitch ? (p1Twitch.startsWith('@') ? p1Twitch : '@'+p1Twitch) : '';
             const t2 = p2Twitch ? (p2Twitch.startsWith('@') ? p2Twitch : '@'+p2Twitch) : '';
 
-            let msg = `⚔️ A ARENA VAI TREMER! X1 INICIANDO! ⚔️\n🔴 ${txtP1} ${t1}\n🆚 CONTRA 🆚\n🔵 ${txtP2} ${t2}`;
+            let msg = `⚔️ A ARENA VAI TREMER! X1 INICIANDO! ⚔️ | 🔴 ${txtP1} ${t1} 🆚 CONTRA 🆚 🔵 ${txtP2} ${t2}`;
 
-            client.say(localStorage.getItem('x1_channel'), msg).then(() => {
-                btn.innerText = "✅ ENVIADO!"; setTimeout(() => { btn.innerText = txtOriginal; }, 3000);
-            }).catch(err => { alert("Erro ao enviar."); btn.innerText = txtOriginal; });
+            sendChatMsg(msg);
+            
+            btn.innerText = "✅ ENVIADO!"; 
+            setTimeout(() => { 
+                btn.innerText = txtOriginal; 
+            }, 3000);
         }
 
         function setVencedor(btnCoroa, isP1) {
