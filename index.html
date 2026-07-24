@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mata-Mata de Lorencia - Mega MU</title>
+    
+    <link rel="icon" href="icone.png" type="image/png">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tmi.js/1.8.5/tmi.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0c10; --border-gold: #d4af37; --box-bg: #151a22;
+            --text-light: #e0e0e0; --mu-red: #8b0000; --mu-green: #2ecc71;
+        }
+        body {
+            background-color: var(--bg-color); color: var(--text-light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0; padding: 10px; min-height: 100vh;
+            background-image: radial-gradient(circle, #1a1a1d 0%, #000000 100%);
+        }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 0 20px; }
+        h1 { color: var(--border-gold); text-transform: uppercase; letter-spacing: 3px; text-shadow: 2px 2px 4px #000; text-align: center; flex-grow: 1; margin: 10px 0; }
+        
+        .status-badge {
+            display: inline-flex; align-items: center; background-color: #0d2a19; color: #00ff66;
+            padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; border: 1px solid #194d2e;
+        }
+        .status-dot { width: 10px; height: 10px; background-color: #00ff66; border-radius: 50%; margin-right: 8px; box-shadow: 0 0 8px #00ff66; }
+        .status-disconnected { background-color: #330000; color: #ff3333; border-color: #660000; }
+        .status-disconnected .status-dot { background-color: #ff3333; box-shadow: 0 0 8px #ff3333; }
+        
+        .botoes-topo { display: flex; gap: 10px; }
+        .config-btn { background: var(--box-bg); border: 2px solid var(--border-gold); color: var(--border-gold); font-size: 14px; cursor: pointer; border-radius: 5px; padding: 5px 15px; transition: 0.3s; font-weight: bold; }
+        .config-btn:hover { background: var(--border-gold); color: #000; }
+        .btn-limpar { border-color: var(--mu-red); color: var(--mu-red); }
+        .btn-limpar:hover { background: var(--mu-red); color: #fff; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: var(--box-bg); border: 2px solid var(--border-gold); padding: 20px; width: 450px; border-radius: 8px; box-shadow: 0 0 30px rgba(212, 175, 55, 0.2); max-height: 80vh; overflow-y: auto; }
+        .modal-content::-webkit-scrollbar { width: 8px; }
+        .modal-content::-webkit-scrollbar-thumb { background: var(--border-gold); border-radius: 4px; }
+        .modal-content h2 { margin-top: 0; color: var(--border-gold); text-align: center; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .fechar-modal { float: right; cursor: pointer; color: var(--mu-red); font-weight: bold; font-size: 18px; }
+        
+        .modal-content label { display: block; margin-top: 10px; font-size: 14px; color: #aaa; }
+        .modal-content input { width: 90%; padding: 8px; margin-top: 5px; background: #111; border: 1px solid var(--border-gold); color: #fff; }
+        .btn-salvar { width: 100%; background: linear-gradient(to bottom, var(--mu-red), #4a0000); color: white; border: 1px solid var(--border-gold); padding: 10px; cursor: pointer; font-weight: bold; margin-top: 15px; }
+        .btn-sortear-master { background: linear-gradient(to bottom, #d4af37, #997a00); color: #000; font-size: 16px; border: none; }
+        .btn-sortear-master:hover { background: linear-gradient(to bottom, #ffcc00, #d4af37); box-shadow: 0 0 15px #ffcc00; }
+
+        .sorteio-row { display: flex; gap: 5px; margin-bottom: 8px; align-items: center; border-bottom: 1px dashed #333; padding-bottom: 8px; }
+        .sorteio-row input { width: 40%; margin-top: 0; padding: 5px; font-size: 12px; }
+        .sorteio-row select { width: 20%; background: #222; color: #fff; border: 1px solid var(--border-gold); font-size: 11px; padding: 4px; }
+
+        .roleta-anim { animation: piscarRoleta 0.1s infinite; color: #ffcc00 !important; font-weight: bold; border-color: #ffcc00 !important; box-shadow: 0 0 10px #ffcc00; }
+        @keyframes piscarRoleta { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* RADAR COM IMAGEM DE FUNDO */
+        .radar-box { 
+            position: relative; overflow: hidden;
+            background: #050505; border: 1px solid #333; padding: 25px 15px; margin-top: 15px; 
+            border-radius: 8px; font-family: 'Courier New', monospace; font-size: 16px; 
+            color: #fff; box-shadow: inset 0 0 30px #000; text-align: center; 
+        }
+        
+        .radar-bg {
+            position: absolute; right: -20px; top: 50%; transform: translateY(-50%);
+            height: 140%; opacity: 0.25; z-index: 0; pointer-events: none;
+            filter: drop-shadow(0 0 10px #000);
+        }
+        
+        .radar-content { position: relative; z-index: 1; }
+
+        .radar-nome { color: var(--border-gold); font-size: 26px; font-weight: bold; margin-bottom: 15px; text-shadow: 0 0 8px rgba(212, 175, 55, 0.5); }
+        .radar-stats { color: #ccc; margin-bottom: 8px; font-size: 18px; }
+        .radar-hunt { color: var(--mu-green); font-size: 20px; margin-bottom: 25px; font-weight: bold; }
+        
+        .radar-zoeira { font-family: 'Segoe UI', sans-serif; font-weight: bold; font-size: 16px; padding: 12px; border-radius: 5px; transition: 0.3s; }
+        .zoeira-baixo { color: #ff4444; background: rgba(255, 0, 0, 0.1); border: 1px solid #440000; }
+        .zoeira-quase { color: #ffaa00; background: rgba(255, 170, 0, 0.1); border: 1px solid #442200; }
+        .zoeira-big { color: #00ff66; background: rgba(0, 255, 102, 0.1); border: 1px solid #004411; text-shadow: 0 0 8px #00ff66; font-size: 18px; text-transform: uppercase; }
+        .zoeira-monstro { color: #d4af37; background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; text-shadow: 0 0 10px #d4af37; font-size: 20px; text-transform: uppercase; box-shadow: 0 0 15px rgba(212, 175, 55, 0.4); }
+
+        .bracket { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 10px; width: 100%; }
+        .column { display: flex; flex-direction: column; justify-content: space-around; }
+        .col-oitavas { height: 900px; } .col-quartas { height: 700px; justify-content: space-around; }
+        .col-semi { height: 500px; justify-content: space-around; } .col-final { height: 250px; justify-content: center; }
+        
+        .match { background-color: var(--box-bg); border: 1px solid var(--border-gold); padding: 8px; width: 230px; border-radius: 4px; box-shadow: inset 0 0 8px #000; }
+        .player-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .inputs-col { display: flex; flex-direction: column; width: 75%; gap: 3px; }
+        
+        .name-class-row { display: flex; gap: 5px; align-items: center; }
+        .char-name { flex-grow: 1; min-width: 0; }
+        
+        .class-sel { width: 50px; background: #222; color: #fff; border: 1px solid var(--border-gold); font-size: 11px; padding: 2px; cursor: pointer; }
+        .class-img { width: 26px; height: 26px; object-fit: contain; border-radius: 3px; border: 1px solid var(--border-gold); cursor: pointer; display: none; }
+        .class-img:hover { opacity: 0.8; }
+
+        .match input { width: 100%; background: #000; color: #fff; border: 1px solid #333; padding: 4px; font-size: 11px; box-sizing: border-box; }
+        .match input.twitch-input { border-bottom: 1px solid #444; color: #aaa; }
+        
+        .acoes-col { display: flex; flex-direction: column; gap: 4px; width: 20%; }
+        .btn-acao { background: #222; border: 1px solid #444; color: #fff; cursor: pointer; font-size: 12px; padding: 4px; transition: 0.2s; }
+        .btn-acao:hover { background: var(--border-gold); color: #000; }
+        .btn-win { background: #1a1a1a; border-color: var(--border-gold); color: var(--border-gold); }
+        .btn-win:hover { background: var(--border-gold); color: #000; }
+
+        .btn-anunciar { width: 100%; background: #2a0000; color: var(--border-gold); border: 1px solid var(--border-gold); padding: 6px; font-size: 11px; cursor: pointer; margin-top: 6px; font-weight: bold; text-transform: uppercase; }
+        .btn-anunciar:hover { background: var(--mu-red); color: #fff; box-shadow: 0 0 10px var(--mu-red); }
+        .final-match { transform: scale(1.15); border-color: #ffcc00; box-shadow: 0 0 20px rgba(255, 204, 0, 0.4); }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <div id="badge-conexao" class="status-badge status-disconnected">
+            <div class="status-dot"></div><span id="txt-conexao">Desconectado</span>
+        </div>
+        
+        <h1>Mata-Mata de Lorencia</h1>
+        
+        <div class="botoes-topo">
+            <button class="config-btn btn-limpar" onclick="limparChave()">🗑️ Limpar</button>
+            <button class="config-btn" onclick="abrirModal('sorteioModal')" style="color: #ffcc00; border-color: #ffcc00;">🎲 Sorteio (Roleta)</button>
+            <button class="config-btn" onclick="abrirModal('configModal')">⚙️ Twitch</button>
+        </div>
+    </div>
+
+    <!-- Modal Twitch (Idêntico ao do Sorteador) -->
+    <div class="modal" id="configModal">
+        <div class="modal-content">
+            <span class="fechar-modal" onclick="fecharModal('configModal')">X</span>
+            <h2>Configuração da Twitch</h2>
+            <label>Sua Twitch</label>
+            <input type="text" id="configChannel" placeholder="Ex: SeuCanal">
+            <label style="margin-top:10px;">Token OAuth (Opcional)</label>
+            <input type="password" id="configToken" placeholder="Cole o 'oauth:abcd...' aqui">
+            <button class="btn-salvar" style="background: #00E5FF; color:#121216;" onclick="salvarConfiguracoes()">🔗 CONECTAR AO CHAT</button>
+        </div>
+    </div>
+
+    <div class="modal" id="sorteioModal">
+        <div class="modal-content" id="sorteio-content">
+            <span class="fechar-modal" onclick="fecharModal('sorteioModal')">X</span>
+            <h2>🎲 Participantes do X1</h2>
+            <p style="text-align: center; font-size: 12px; color: #aaa;">Preencha a lista. Os nomes vazios serão ignorados na roleta.</p>
+            <div id="lista-sorteio"></div>
+            <button class="btn-salvar btn-sortear-master" onclick="iniciarSorteio()">🎰 GIRAR A ROLETA! 🎰</button>
+        </div>
+    </div>
+
+    <div class="modal" id="statusModal">
+        <div class="modal-content">
+            <span class="fechar-modal" onclick="fecharModal('statusModal')">X</span>
+            <h2>🔮 Radar do Continente</h2>
+            <div id="radar-container" class="radar-box">
+                <div style="color:#aaa; font-size: 14px;">Buscando dados na Vercel...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bracket" id="bracket-container"></div>
+
+    <script>
+        let client = null;
+        
+        const classesOptions = `
+            <option value="">Cls</option>
+            <option value="ELF">ELF</option>
+            <option value="GL">GL</option>
+            <option value="RF">RF</option>
+            <option value="rw">RW</option>
+            <option value="SM">SM</option>
+            <option value="SUM">SUM</option>
+            <option value="BK">BK</option>
+            <option value="DL">DL</option>
+            <option value="MG">MG</option>
+            <option value="sl">SL</option>
+        `;
+
+        const bancoDeFrases = {
+            baixo: [
+                "??? pq essa porra ta jogando x1 ? ou André tira esse cara PF",
+                "Nasceu ontem? Vai upar essa porra logo KKKKKKKKKKK",
+                "Hunt de quem joga só no domingo depois da missa KKKKKK",
+                "Esqueceu de ligar o macro? KKKKKKK",
+                "Apanha até pra aranha em Lorencia com esse Hunt KKKKKK",
+                "Maluco, com esse Hunt eu nem logava no jogo KKKKK",
+                "Avisa pra esse cara que o tutorial já acabou KKKKKK",
+                "Esse aí farma no Blood Castle de Devias, só pode kkkkk",
+                "Desinstala e vai jogar Campo Minado KKKKKK",
+                "Mano, eu upo mais que isso dormindo KKKKKK",
+                "Carregado até na hora de farmar misericórdia KKKK",
+                "O cara é inimigo do XP, não tem condição KKKKKK",
+                "Cancela o X1 que esse aí não tem nem set KKKKK"
+            ],
+            quase: [
+                "Tá no caminho, quase um Big Hunt... mas ainda falta farmar!",
+                "Sai do YouTube e vai focar no spot, tá quase lá!",
+                "Tem potencial, mas ainda não é o terror do servidor.",
+                "Tá esquentando... Daqui uns dias ganha o respeito do chat.",
+                "Quase Big Hunt! Mais umas noites em claro e chega lá.",
+                "Falta pouco pra sair do amadorismo!",
+                "Perto do Big Hunt, mas ainda toma KS fácil."
+            ],
+            big: [
+                "🔥 BIG HUNT! O cara não sai do spot, respeita!",
+                "🔥 Brabo demais! Esse aqui farmou até os dedos caírem!",
+                "🔥 Big Hunt na veia! O terror de Kanturu chegou!",
+                "🔥 BIG HUNTzada! Já pode dar aula pro chat!",
+                "🔥 Pique Big Hunt! Esse aí domina o servidor fácil!",
+                "🔥 BIG HUNT CONFIRMADO! Segura a emoção!"
+            ],
+            monstro: [
+                "👑 MONSTRO DO HUNT! Esse aqui esqueceu o que é ver a luz do sol, seloco!",
+                "👑 O PC desse cara não desliga desde 2024! Absurdo!",
+                "👑 A lenda viva! O servidor até trava quando esse monstro loga!",
+                "👑 Chegou o dono do jogo! Alguém avisa que ele precisa dormir KKKKK",
+                "👑 Modo Phantom ativado! Esse aqui é uma máquina de farmar!",
+                "👑 O verdadeiro Rei do Continente! Respeito máximo!"
+            ]
+        };
+
+        let frasesDisponiveis = JSON.parse(JSON.stringify(bancoDeFrases));
+
+        function sortearFrase(huntLevel) {
+            let cat = huntLevel <= 150 ? 'baixo' : (huntLevel <= 179 ? 'quase' : (huntLevel <= 249 ? 'big' : 'monstro'));
+            if(frasesDisponiveis[cat].length === 0) frasesDisponiveis[cat] = [...bancoDeFrases[cat]];
+            const index = Math.floor(Math.random() * frasesDisponiveis[cat].length);
+            const fraseEscolhida = frasesDisponiveis[cat][index];
+            frasesDisponiveis[cat].splice(index, 1);
+            return { texto: fraseEscolhida, css: `zoeira-${cat}` };
+        }
+
+        function gerarListaSorteio() {
+            let html = '';
+            for(let i = 1; i <= 16; i++) {
+                html += `
+                <div class="sorteio-row">
+                    <span style="color:#d4af37; font-weight:bold; width: 20px;">${i}.</span>
+                    <input type="text" class="sort-nick" placeholder="Nick MU">
+                    <select class="sort-class">${classesOptions}</select>
+                    <input type="text" class="sort-twitch" placeholder="@Twitch">
+                </div>`;
+            }
+            document.getElementById('lista-sorteio').innerHTML = html;
+        }
+
+        async function iniciarSorteio() {
+            const rows = document.querySelectorAll('.sorteio-row');
+            let jogadores = [];
+            rows.forEach(row => {
+                const nick = row.querySelector('.sort-nick').value.trim();
+                const classe = row.querySelector('.sort-class').value;
+                const twitch = row.querySelector('.sort-twitch').value.trim();
+                if(nick !== "") jogadores.push({ nick, classe, twitch });
+            });
+
+            if(jogadores.length < 2) return alert("Preencha pelo menos 2 jogadores para sortear!");
+
+            for (let i = jogadores.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [jogadores[i], jogadores[j]] = [jogadores[j], jogadores[i]];
+            }
+
+            while(jogadores.length < 16) jogadores.push({ nick: "", classe: "", twitch: "" });
+            fecharModal('sorteioModal');
+
+            const inputsOitavas = document.querySelectorAll('.col-oitavas .char-name');
+            const inputsTwitch = document.querySelectorAll('.col-oitavas .twitch-input');
+            const selectClasses = document.querySelectorAll('.col-oitavas .class-sel');
+            
+            inputsOitavas.forEach(input => input.classList.add('roleta-anim'));
+
+            let tempoAnimacao = 0;
+            const intervalo = setInterval(() => {
+                inputsOitavas.forEach(input => input.value = "Sorteando...");
+                tempoAnimacao += 100;
+
+                if (tempoAnimacao >= 3000) {
+                    clearInterval(intervalo);
+                    inputsOitavas.forEach(input => input.classList.remove('roleta-anim'));
+
+                    for(let i = 0; i < 16; i++) {
+                        inputsOitavas[i].value = jogadores[i].nick;
+                        inputsTwitch[i].value = jogadores[i].twitch;
+                        
+                        const sel = selectClasses[i];
+                        sel.value = jogadores[i].classe;
+                        atualizarClasse(inputsOitavas[i]);
+                        if(jogadores[i].classe !== "") selecionarClasse(sel);
+                    }
+                    salvarEstadoChave();
+                    anunciarSorteioChat(jogadores);
+                }
+            }, 100);
+        }
+
+        function anunciarSorteioChat(jogadores) {
+            if (!client || client.readyState() !== "OPEN") return;
+
+            let msg = `🎲 ROLETA RODOU! CHAVEAMENTO DEFINIDO! 🎲 `;
+            let lutasValidas = 0;
+            for(let i = 0; i < 16; i += 2) {
+                const j1 = jogadores[i].nick;
+                const j2 = jogadores[i+1].nick;
+                if(j1 !== "" && j2 !== "") {
+                    lutasValidas++;
+                    msg += `| ⚔️ LUTA ${lutasValidas}: [${j1}] vs [${j2}] `;
+                }
+            }
+            client.say(localStorage.getItem('x1_channel'), msg).catch(err => console.error(err));
+        }
+
+        function atualizarClasse(inputName) {
+            const row = inputName.closest('.name-class-row');
+            const select = row.querySelector('.class-sel');
+            const img = row.querySelector('.class-img');
+
+            if (inputName.value.trim() === '') {
+                select.value = "";
+                select.style.display = "inline-block";
+                img.style.display = "none";
+                salvarEstadoChave();
+            }
+        }
+
+        function selecionarClasse(selectElement) {
+            const img = selectElement.nextElementSibling;
+            if (selectElement.value !== "") {
+                selectElement.style.display = "none";
+                img.style.display = "inline-block";
+                img.src = `img/${selectElement.value}.png`;
+                img.title = "Clique para trocar a classe";
+                salvarEstadoChave();
+            }
+        }
+
+        function resetarClasse(imgElement) {
+            const select = imgElement.previousElementSibling;
+            imgElement.style.display = "none";
+            select.value = "";
+            select.style.display = "inline-block";
+            salvarEstadoChave();
+        }
+
+        async function fetchMuData(nick) {
+            if (!nick) return null;
+            try {
+                const response = await fetch(`/api/mu?nick=${nick}`);
+                if (!response.ok) throw new Error("Erro na rede");
+                const text = await response.text();
+                
+                const regex = /\[(.*?)\]\s*(\d+)\((\d+rr)\),\s*HuntLevel:\s*(\d+)/i;
+                const match = text.match(regex);
+                if (match) return { nick: match[1], level: match[2], resets: match[3], hunt: parseInt(match[4], 10) };
+                
+                return { erro: text.trim() }; 
+            } catch (error) {
+                return { erro: "Falha na conexão com o servidor." };
+            }
+        }
+
+        function abrirModal(id) { document.getElementById(id).style.display = 'flex'; }
+        function fecharModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        async function abrirStatusChar(btn) {
+            const row = btn.closest('.player-row');
+            const nick = row.querySelector('.char-name').value;
+            const classe = row.querySelector('.class-sel').value;
+            
+            if(!nick) return alert("Digite o nick do personagem primeiro!");
+
+            abrirModal('statusModal');
+            const radarBox = document.getElementById('radar-container');
+            radarBox.innerHTML = `<div style="color:#aaa;">Concentrando mana... Buscando [${nick}]</div>`;
+            
+            const dados = await fetchMuData(nick);
+            
+            if (dados && !dados.erro) {
+                const zoeira = sortearFrase(dados.hunt);
+                const imgFundo = classe ? `<img src="img/${classe}.png" class="radar-bg">` : '';
+
+                radarBox.innerHTML = `
+                    ${imgFundo}
+                    <div class="radar-content">
+                        <div class="radar-nome">[${dados.nick}]</div>
+                        <div class="radar-stats">${dados.level}(${dados.resets}),</div>
+                        <div class="radar-hunt">HuntLevel: ${dados.hunt}</div>
+                        <div class="radar-zoeira ${zoeira.css}">${zoeira.texto}</div>
+                    </div>
+                `;
+            } else {
+                radarBox.innerHTML = `<div style="color:#ff4444;">${dados ? dados.erro : 'Personagem não encontrado.'}</div>`;
+            }
+        }
+
+        function salvarEstadoChave() {
+            const matches = document.querySelectorAll('.match');
+            const estado = {};
+            matches.forEach(match => {
+                estado[match.id] = {
+                    p1n: match.querySelector('.p1-name').value, p1c: match.querySelector('.p1-class').value, p1t: match.querySelector('.p1-twitch').value,
+                    p2n: match.querySelector('.p2-name').value, p2c: match.querySelector('.p2-class').value, p2t: match.querySelector('.p2-twitch').value
+                };
+            });
+            localStorage.setItem('mu_bracket_x1', JSON.stringify(estado));
+        }
+
+        function carregarEstadoChave() {
+            const salvo = localStorage.getItem('mu_bracket_x1');
+            if (salvo) {
+                const estado = JSON.parse(salvo);
+                for (const matchId in estado) {
+                    const match = document.getElementById(matchId);
+                    if (match) {
+                        match.querySelector('.p1-name').value = estado[matchId].p1n || ''; match.querySelector('.p1-class').value = estado[matchId].p1c || ''; match.querySelector('.p1-twitch').value = estado[matchId].p1t || '';
+                        match.querySelector('.p2-name').value = estado[matchId].p2n || ''; match.querySelector('.p2-class').value = estado[matchId].p2c || ''; match.querySelector('.p2-twitch').value = estado[matchId].p2t || '';
+
+                        const sel1 = match.querySelector('.p1-class'); if(sel1.value) selecionarClasse(sel1);
+                        const sel2 = match.querySelector('.p2-class'); if(sel2.value) selecionarClasse(sel2);
+                    }
+                }
+            }
+        }
+
+        function limparChave() {
+            if(confirm("Tem certeza que deseja apagar todos os jogadores do Mata-Mata?")) {
+                localStorage.removeItem('mu_bracket_x1');
+                location.reload();
+            }
+        }
+
+        window.onload = () => {
+            document.getElementById('configChannel').value = localStorage.getItem('x1_channel') || '';
+            document.getElementById('configToken').value = localStorage.getItem('x1_token') || '';
+            
+            gerarChaveamento();
+            gerarListaSorteio();
+            carregarEstadoChave();
+            
+            document.querySelectorAll('.match input').forEach(input => { input.addEventListener('input', salvarEstadoChave); });
+            
+            if(document.getElementById('configChannel').value.trim() !== ''){
+                conectarTwitch();
+            }
+        };
+
+        // LÓGICA EXATA DO SEU SORTEADOR PARA CONEXÃO COM A TWITCH
+        function salvarConfiguracoes() {
+            const channel = document.getElementById('configChannel').value.trim();
+            const token = document.getElementById('configToken').value.trim();
+            localStorage.setItem('x1_channel', channel);
+            localStorage.setItem('x1_token', token);
+            conectarTwitch();
+        }
+
+        function conectarTwitch() {
+            let channelRaw = document.getElementById('configChannel').value.trim();
+            let oauthTokenRaw = document.getElementById('configToken').value.trim();
+            
+            if(!channelRaw) return alert("Digite o canal!");
+            let channel = channelRaw.toLowerCase();
+
+            if(client) {
+                client.disconnect();
+            }
+
+            const badge = document.getElementById('badge-conexao');
+            const txt = document.getElementById('txt-conexao');
+
+            txt.innerText = "Conectando...";
+            badge.classList.remove('status-disconnected');
+
+            client = new tmi.Client({
+                options: { debug: false },
+                identity: {
+                    username: oauthTokenRaw ? channel : undefined,
+                    password: oauthTokenRaw ? (oauthTokenRaw.startsWith('oauth:') ? oauthTokenRaw : 'oauth:' + oauthTokenRaw) : undefined
+                },
+                channels: [ channel ]
+            });
+
+            client.connect().then(() => {
+                badge.classList.remove('status-disconnected');
+                txt.innerText = "Conectado c/ Envio Automático!";
+                setTimeout(() => fecharModal('configModal'), 1000);
+            }).catch(err => {
+                badge.classList.add('status-disconnected');
+                txt.innerText = "Erro na Conexão";
+                console.error("Erro Twitch:", err);
+            });
+        }
+
+        async function anunciarX1(btn) {
+            if (!client || client.readyState() !== "OPEN") return alert("Twitch desconectada!");
+
+            const matchDiv = btn.closest('.match');
+            const p1Nick = matchDiv.querySelector('.p1-name').value || "Lutador 1"; const p1Twitch = matchDiv.querySelector('.p1-twitch').value;
+            const p2Nick = matchDiv.querySelector('.p2-name').value || "Lutador 2"; const p2Twitch = matchDiv.querySelector('.p2-twitch').value;
+
+            const txtOriginal = btn.innerText;
+            btn.innerText = "⏳ ENVIANDO...";
+
+            const [dP1, dP2] = await Promise.all([fetchMuData(p1Nick), fetchMuData(p2Nick)]);
+            
+            const txtP1 = dP1 && !dP1.erro ? `[${dP1.nick}] Lvl: ${dP1.level} / Hunt: ${dP1.hunt}` : `[${p1Nick}] Status Oculto`;
+            const txtP2 = dP2 && !dP2.erro ? `[${dP2.nick}] Lvl: ${dP2.level} / Hunt: ${dP2.hunt}` : `[${p2Nick}] Status Oculto`;
+            const t1 = p1Twitch ? (p1Twitch.startsWith('@') ? p1Twitch : '@'+p1Twitch) : '';
+            const t2 = p2Twitch ? (p2Twitch.startsWith('@') ? p2Twitch : '@'+p2Twitch) : '';
+
+            let msg = `⚔️ A ARENA VAI TREMER! X1 INICIANDO! ⚔️\n🔴 ${txtP1} ${t1}\n🆚 CONTRA 🆚\n🔵 ${txtP2} ${t2}`;
+
+            client.say(localStorage.getItem('x1_channel'), msg).then(() => {
+                btn.innerText = "✅ ENVIADO!"; setTimeout(() => { btn.innerText = txtOriginal; }, 3000);
+            }).catch(err => { alert("Erro ao enviar."); btn.innerText = txtOriginal; });
+        }
+
+        function setVencedor(btnCoroa, isP1) {
+            const matchDiv = btnCoroa.closest('.match'); const matchId = matchDiv.id;
+            const pre = isP1 ? '.p1' : '.p2';
+            
+            const nick = matchDiv.querySelector(`${pre}-name`).value;
+            const classe = matchDiv.querySelector(`${pre}-class`).value;
+            const twitch = matchDiv.querySelector(`${pre}-twitch`).value;
+
+            const rotas = { 'j1': ['j9', true], 'j2': ['j9', false], 'j3': ['j10', true], 'j4': ['j10', false], 'j5': ['j11', true], 'j6': ['j11', false], 'j7': ['j12', true], 'j8': ['j12', false], 'j9': ['j13', true], 'j10': ['j13', false], 'j11': ['j14', true], 'j12': ['j14', false], 'j13': ['j15', true], 'j14': ['j15', false] };
+            const destino = rotas[matchId];
+            
+            if(destino) {
+                const jogoDestino = document.getElementById(destino[0]);
+                if(jogoDestino) {
+                    const destPre = destino[1] ? '.p1' : '.p2';
+                    jogoDestino.querySelector(`${destPre}-name`).value = nick;
+                    jogoDestino.querySelector(`${destPre}-twitch`).value = twitch;
+                    
+                    const destSel = jogoDestino.querySelector(`${destPre}-class`);
+                    destSel.value = classe;
+                    if(classe) selecionarClasse(destSel);
+                    else resetarClasse(jogoDestino.querySelector(`${destPre}-class`).nextElementSibling);
+                    
+                    salvarEstadoChave();
+
+                    btnCoroa.style.background = "#d4af37"; btnCoroa.style.color = "#000";
+                    setTimeout(() => { btnCoroa.style.background = ""; btnCoroa.style.color = ""; }, 500);
+                }
+            } else if(matchId === 'j15') { alert(`🏆 CAMPEÃO DO CONTINENTE: ${nick}! 🏆`); }
+        }
+
+        function gerarChaveamento() {
+            const gerarMatch = (id) => `
+                <div class="match ${id==='j15' ? 'final-match':''}" id="${id}">
+                    ${id==='j15' ? '<h3 style="margin:0 0 5px 0;text-align:center;color:#ffcc00;font-size:12px;">GRANDE FINAL</h3>' : ''}
+                    <div class="player-row">
+                        <div class="inputs-col">
+                            <div class="name-class-row">
+                                <input type="text" class="char-name p1-name" placeholder="Nick" oninput="atualizarClasse(this)">
+                                <select class="class-sel p1-class" onchange="selecionarClasse(this)">${classesOptions}</select>
+                                <img class="class-img" onclick="resetarClasse(this)">
+                            </div>
+                            <input type="text" class="twitch-input p1-twitch" placeholder="@Twitch">
+                        </div>
+                        <div class="acoes-col">
+                            <button class="btn-acao" onclick="abrirStatusChar(this)" title="Ver Status">👁️</button>
+                            <button class="btn-acao btn-win" onclick="setVencedor(this, true)" title="Avançar Vencedor">👑</button>
+                        </div>
+                    </div>
+                    <div class="player-row">
+                        <div class="inputs-col">
+                            <div class="name-class-row">
+                                <input type="text" class="char-name p2-name" placeholder="Nick" oninput="atualizarClasse(this)">
+                                <select class="class-sel p2-class" onchange="selecionarClasse(this)">${classesOptions}</select>
+                                <img class="class-img" onclick="resetarClasse(this)">
+                            </div>
+                            <input type="text" class="twitch-input p2-twitch" placeholder="@Twitch">
+                        </div>
+                        <div class="acoes-col">
+                            <button class="btn-acao" onclick="abrirStatusChar(this)" title="Ver Status">👁️</button>
+                            <button class="btn-acao btn-win" onclick="setVencedor(this, false)" title="Avançar Vencedor">👑</button>
+                        </div>
+                    </div>
+                    <button class="btn-anunciar" onclick="anunciarX1(this)">Anunciar X1</button>
+                </div>`;
+
+            document.getElementById('bracket-container').innerHTML = `
+                <div class="column col-oitavas">${[1,2,3,4].map(i => gerarMatch('j'+i)).join('')}</div>
+                <div class="column col-quartas">${[9,10].map(i => gerarMatch('j'+i)).join('')}</div>
+                <div class="column col-semi">${gerarMatch('j13')}</div>
+                <div class="column col-final">${gerarMatch('j15')}</div>
+                <div class="column col-semi">${gerarMatch('j14')}</div>
+                <div class="column col-quartas">${[11,12].map(i => gerarMatch('j'+i)).join('')}</div>
+                <div class="column col-oitavas">${[5,6,7,8].map(i => gerarMatch('j'+i)).join('')}</div>
+            `;
+        }
+    </script>
+</body>
+</html>
